@@ -1,0 +1,33 @@
+# Using Ubuntu Linux, because it is a full version of Linux
+# I would stay away from smaller versions of Linux, like Alpine, as we retrieve timezones from Operating System
+
+# See https://aka.ms/customizecontainer to learn how to customize your debug container and how Visual Studio uses this Dockerfile to build your images for faster debugging.
+# This stage is used when running from VS in fast mode (Default for Debug configuration)
+FROM mcr.microsoft.com/dotnet/aspnet:8.0-noble AS base
+USER app
+WORKDIR /app
+EXPOSE 8080
+EXPOSE 8081
+
+
+# This stage is used to build the service project
+FROM mcr.microsoft.com/dotnet/sdk:8.0-noble AS build
+ARG BUILD_CONFIGURATION=Release
+WORKDIR /src
+COPY ["src/Timezone.WebApi/TimezoneWebApi.csproj", "src/Timezone.WebApi/"]
+COPY ["src/Timezone.Core/Timezone.Core.csproj", "src/Timezone.Core/"]
+RUN dotnet restore "./src/Timezone.WebApi/TimezoneWebApi.csproj"
+COPY . .
+WORKDIR "/src/src/Timezone.WebApi"
+RUN dotnet build "./TimezoneWebApi.csproj" -c $BUILD_CONFIGURATION -o /app/build
+
+# This stage is used to publish the service project to be copied to the final stage
+FROM build AS publish
+ARG BUILD_CONFIGURATION=Release
+RUN dotnet publish "./TimezoneWebApi.csproj" -c $BUILD_CONFIGURATION -o /app/publish /p:UseAppHost=false
+
+# This stage is used in production or when running from VS in regular mode (Default when not using the Debug configuration)
+FROM base AS final
+WORKDIR /app
+COPY --from=publish /app/publish .
+ENTRYPOINT ["dotnet", "TimezoneWebApi.dll"]
